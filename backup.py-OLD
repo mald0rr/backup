@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+
+######################################################
+## Backup script v1.0
+## - based on rsync with hard-links to existing files
+## - take a one-off initial timestamped full backup; create the target directory if needed
+## - take incremental time stamped backups
+## - take into account exclusion file types and|or exclusion directories
+## - timestamped up to the minute allowing for one backup per minute (with graceful handling if there more)
+## - possibility to pre-run check scripts and|or post-run activities in individual scripts
+## - define full config in a dedicated yaml file per backup set
+######################################################
+
 import yaml
 import os
 import subprocess
@@ -22,11 +34,9 @@ def run_external_script(script_path):
 def build_rsync_exclusions(exclude_file_types, exclude_dirs):
     """Build a list of rsync --exclude parameters based on file types and directories."""
     exclusions = []
-    # Add file type exclusions
     if exclude_file_types:
         for ext in exclude_file_types:
             exclusions.append(f"--exclude={ext}")
-    # Add directory exclusions
     if exclude_dirs:
         for d in exclude_dirs:
             exclusions.append(f"--exclude={d}/")
@@ -34,37 +44,43 @@ def build_rsync_exclusions(exclude_file_types, exclude_dirs):
 
 def rsync_with_exclusions(source, destination, exclusions):
     """Perform rsync with exclusions to the destination directory."""
-    rsync_cmd = ['rsync', '-a', '--delete']  # '--delete' will remove files from the destination not in source
+    rsync_cmd = ['rsync', '-a', '--delete']
     rsync_cmd.extend(exclusions)
     rsync_cmd.append(source + '/')
     rsync_cmd.append(destination)
 
-    # Log the command for debugging purposes
     print(f"Executing rsync command: {' '.join(rsync_cmd)}")
 
-    # Execute the command
     try:
         subprocess.run(rsync_cmd, shell=False, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Rsync command failed with error: {e}")
         sys.exit(1)
 
+def create_directory(path):
+    """Create a directory if it doesn't already exist."""
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception as e:
+        print(f"Error creating directory {path}: {e}")
+        sys.exit(1)
+
 def init_backup(master_dir, backup_dir, exclusions=None):
     """Initial backup with exclusions."""
     current_backup = os.path.join(backup_dir, 'current')
-
-    # Check if an initial backup exists by verifying the "current" symlink
     if os.path.exists(current_backup):
         print("Error: An initial backup already exists. Aborting 'init' to prevent data loss.")
         sys.exit(1)
 
     date_time = datetime.now().strftime('%Y-%m-%d-%H%M')
     new_backup = os.path.join(backup_dir, date_time)
-    exclusions = exclusions or []
 
+    # Create the backup directory if it doesn't exist
+    create_directory(new_backup)
+
+    exclusions = exclusions or []
     rsync_with_exclusions(master_dir, new_backup, exclusions)
 
-    # Create the "current" symlink
     os.symlink(new_backup, current_backup)
     print(f"Full backup completed to {new_backup}")
 
@@ -73,6 +89,10 @@ def incremental_backup(master_dir, backup_dir, exclusions=None):
     date_time = datetime.now().strftime('%Y-%m-%d-%H%M')
     new_backup = os.path.join(backup_dir, date_time)
     current_backup = os.path.join(backup_dir, 'current')
+
+    # Create the backup directory if it doesn't exist
+    create_directory(new_backup)
+
     exclusions = exclusions or []
 
     rsync_cmd = ['rsync', '-a', '--delete', '--link-dest=' + current_backup]
@@ -80,7 +100,6 @@ def incremental_backup(master_dir, backup_dir, exclusions=None):
     rsync_cmd.append(master_dir + '/')
     rsync_cmd.append(new_backup)
 
-    # Log the command for debugging purposes
     print(f"Executing rsync command: {' '.join(rsync_cmd)}")
 
     try:
@@ -89,7 +108,6 @@ def incremental_backup(master_dir, backup_dir, exclusions=None):
         print(f"Rsync command failed with error: {e}")
         sys.exit(1)
 
-    # Handle existing "current" directory conflicts
     if os.path.exists(current_backup):
         if os.path.islink(current_backup):
             os.unlink(current_backup)
@@ -100,7 +118,6 @@ def incremental_backup(master_dir, backup_dir, exclusions=None):
         else:
             raise FileExistsError(f"Conflict: {current_backup} exists but is not a symlink. Please remove it manually.")
 
-    # Create a new symbolic link pointing to the latest backup
     os.symlink(new_backup, current_backup)
     print(f"Incremental backup completed to {new_backup}")
 
@@ -112,7 +129,6 @@ def main():
     mode = sys.argv[1]
     yaml_path = sys.argv[2]
 
-    # Load configuration
     config = load_config(yaml_path)
     master_dir = config['master_dir']
     backup_dir = config['backup_dir']
@@ -123,26 +139,23 @@ def main():
     exclude_file_type = config.get('exclude_file_type', [])
     exclude_directory = config.get('exclude_directory', [])
 
-    # Build rsync exclusions
     exclusions = build_rsync_exclusions(exclude_file_type, exclude_directory)
 
-    # Execute pre-run checks if required
     if pre_run_required:
         if not run_external_script(pre_run_script):
             print("Pre-run checks failed. Aborting backup.")
             sys.exit(1)
 
-    # Perform the backup
     if mode == 'init':
         init_backup(master_dir, backup_dir, exclusions)
 
     elif mode == 'run':
         incremental_backup(master_dir, backup_dir, exclusions)
 
-    # Execute post-run activities if required
     if post_run_required:
         run_external_script(post_run_script)
 
 if __name__ == "__main__":
     main()
 
+""""""""""""""""""""""""""""""""""""""""""""""""""""""

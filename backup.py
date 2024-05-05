@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ######################################################
-## Backup script v1.0, 2024 MIT licensed by mald0rr
+## Backup script v1.1, 2024 MIT licensed by mald0rr
 ## - based on rsync with hard-links to existing files
 ## - take a one-off initial timestamped full backup
 ## - check if the target directory is a mounted volume and exit if it's not mounted | create the target directory if needed
@@ -29,14 +29,16 @@ def load_config(yaml_path):
     with open(yaml_path, 'r') as file:
         return yaml.safe_load(file)
 
-def is_mounted(path):
-    """Check if the directory is a mounted volume using the mountpoint command."""
-    try:
-        result = subprocess.run(['mountpoint', '-q', path], check=False)
-        return result.returncode == 0
-    except Exception as e:
-        print(f"Error while checking mount status of {path}: {e}")
-        return False
+def is_parent_mounted(path):
+    """Check if any parent directory is a mount point."""
+    current_path = path
+
+    while current_path != '/':
+        if subprocess.run(['mountpoint', '-q', current_path], check=False).returncode == 0:
+            return True
+        current_path = os.path.dirname(current_path)
+
+    return False
 
 def run_external_script(script_path):
     """Run the given script file if it exists and is executable."""
@@ -82,10 +84,10 @@ def create_directory(path):
         sys.exit(1)
 
 def verify_and_create_backup_dir(backup_dir, mounted_volume):
-    """Verify if the backup directory is mounted, and create it if necessary."""
+    """Verify if the backup directory or any parent directory is mounted, and create it if necessary."""
     if mounted_volume:
-        if not is_mounted(backup_dir):
-            print(f"Error: Backup directory {backup_dir} is expected to be a mounted volume but isn't. Aborting backup.")
+        if not is_parent_mounted(backup_dir):
+            print(f"Error: No parent directory of backup {backup_dir} is a mounted volume. Aborting backup.")
             sys.exit(1)
     else:
         create_directory(backup_dir)
