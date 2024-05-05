@@ -1,0 +1,10 @@
+master_dir: "/home/aq23/dev"
+backup_dir: "/home/aq23/testbackup"
+pre_run_checks_required: false
+pre_run_check_script: "/path/to/pre_check.sh"
+post_run_activities_required: false
+post_run_script: "/path/to/post_check.sh"
+exclude_file_type:
+  - "*.tmp"
+exclude_directory:
+  - ".git"
