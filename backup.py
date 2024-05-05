@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ######################################################
-## Backup script v1.0
+## Backup script v1.0, 2024 MIT licensed by mald0rr
 ## - based on rsync with hard-links to existing files
 ## - take a one-off initial timestamped full backup
 ## - check if the target directory is a mounted volume and exit if it's not mounted | create the target directory if needed
@@ -10,6 +10,12 @@
 ## - timestamped up to the minute allowing for one backup per minute (with graceful handling if there more)
 ## - possibility to pre-run check scripts and|or post-run activities in individual scripts
 ## - define full config in a dedicated yaml file per backup set
+##
+## Requires:
+## - backup.py script
+## - a yaml file per backup set
+## - optionally pre- and|or post scripts
+##
 ######################################################
 
 import yaml
